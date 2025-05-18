@@ -125,10 +125,6 @@ def main() -> None:
         sys.exit(1)
 
     # Step 2: Sort files by modification time
-    if args.oldest is not None:
-        args.newest = -args.oldest
-    elif args.newest is None:
-        args.newest = 1
     all_files = sorted(
         all_files,
         key=lambda f: os.stat(f).st_mtime,
