@@ -9,7 +9,7 @@ Supports glob patterns, range slicing (Python slice syntax), and file type filte
 import sys
 import os
 import argparse
-from typing import List, Optional, Callable, Tuple
+from typing import List, Optional, Callable, Tuple, Dict
 
 import magic
 
@@ -55,23 +55,46 @@ KIND_MIME_MAP: dict = {
 }
 
 
-def resolve_files(patterns: List[str]) -> List[str]:
+def resolve_files(patterns: List[str]) -> Tuple[List[str], Dict[str, str]]:
     """
     Expand a list of glob patterns and collect matching files.
 
     Args:
         patterns (List[str]): List of glob/wildcard patterns.
     Returns:
-        List[str]: List of absolute file paths.
+        Tuple[List[str], Dict[str, str]]: List of absolute file paths and mapping of abs paths to original paths.
     """
     import glob
 
     files: List[str] = []
+    path_mapping: Dict[str, str] = {}  # Maps absolute paths to original paths for tilde expansion
+    
     for pat in patterns:
-        files.extend(glob.glob(pat, recursive=True))
-    # Deduplicate and filter only existing files
-    abs_files = {os.path.abspath(f) for f in files if os.path.isfile(f)}
-    return list(abs_files)
+        # Expand tilde in pattern
+        expanded_pat = os.path.expanduser(pat)
+        matched_files = glob.glob(expanded_pat, recursive=True)
+        
+        for f in matched_files:
+            if os.path.isfile(f):
+                abs_path = os.path.abspath(f)
+                files.append(abs_path)
+                # Keep track of the original path format (with ~ if applicable)
+                if '~' in pat and os.path.expanduser('~') in abs_path:
+                    home_path = os.path.expanduser('~')
+                    rel_path = os.path.relpath(abs_path, home_path)
+                    path_mapping[abs_path] = os.path.join('~', rel_path)
+                else:
+                    path_mapping[abs_path] = abs_path
+    
+    # Remove duplicates while preserving order
+    unique_files = []
+    seen = set()
+    for f in files:
+        if f not in seen:
+            unique_files.append(f)
+            seen.add(f)
+    
+    return unique_files, path_mapping
 
 
 def get_kind_checker(kind: Optional[str]) -> Callable[[str], bool]:
@@ -155,8 +178,8 @@ def main() -> None:
     if not args.file:
         parser.error("No file patterns provided.")
 
-    # Step 1: Expand glob patterns to file paths
-    all_files: List[str] = resolve_files(args.file)
+    # Step 1: Expand glob patterns to file paths and create path mapping
+    all_files, path_mapping = resolve_files(args.file)
     if not all_files:
         if args.allow_empty_result:
             return
@@ -201,7 +224,10 @@ def main() -> None:
         selected = list(reversed(selected))  # show oldest first
 
     for path in selected:
-        log(f"{script_name}: Selected {path}")
+        # Use the original path format for logging (with ~ if applicable)
+        display_path = path_mapping.get(path, path)
+        log(f"{script_name}: Selected {display_path}")
+        # Output the absolute path to stdout for programmatic use
         print(path)
 
 
