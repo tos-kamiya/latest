@@ -68,7 +68,7 @@ def resolve_files(patterns: List[str]) -> List[str]:
 
     files: List[str] = []
     for pat in patterns:
-        files.extend(glob.glob(pat))
+        files.extend(glob.glob(pat, recursive=True))
     # Deduplicate and filter only existing files
     abs_files = {os.path.abspath(f) for f in files if os.path.isfile(f)}
     return list(abs_files)
